@@ -1,0 +1,72 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/auth/login",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/auth/register",
+			"style": {
+				"navigationBarTitleText": "注册",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "AI面试主座舱",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/resume/resume_edit",
+			"style": {
+				"navigationBarTitleText": "简历内容填写",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/interview/position",
+			"style": {
+				"navigationBarTitleText": "岗位选择"
+			}
+		},
+		{
+			"path": "pages/interview/interview_chat",
+			"style": {
+				"navigationBarTitleText": "模拟面试",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/interview/records",
+			"style": {
+				"navigationBarTitleText": "评分记录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/interview/report_detail",
+			"style": {
+				"navigationBarTitleText": "面试报告",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/interview/report",
+			"style": {
+				"navigationBarTitleText": "面试报告",
+				"navigationStyle": "custom"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "AI全真模拟面试与能力提升平台",
+		"navigationBarBackgroundColor": "#F6FAFF",
+		"backgroundColor": "#F6FAFF"
+	}
+}
