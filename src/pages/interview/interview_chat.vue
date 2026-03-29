@@ -29,7 +29,7 @@
     <scroll-view class="chat" scroll-y :scroll-into-view="scrollToId" scroll-with-animation>
       <view v-for="item in messages" :id="`m-${item.id}`" :key="item.id" :class="['row', item.role === 'user' ? 'user' : 'ai']">
         <view :class="['bubble', item.role === 'user' ? 'user-bubble' : 'ai-bubble']">
-          <text>{{ item.content }}</text>
+          <text :selectable="true">{{ item.content }}</text>
           <text v-if="item.role === 'ai' && item.routeHint" class="route-badge" :class="item.routeHint === 'web' ? 'web' : 'kb'">
             {{ item.routeHint === 'web' ? '依据全网实时搜索' : '依据本地官方知识库' }}
           </text>
@@ -86,6 +86,7 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { analyzeInterviewApi, answerInterviewApi, endInterviewApi, startInterviewApi, submitInterviewDecisionApi } from '@/api'
 
@@ -135,6 +136,21 @@ onLoad((options) => {
   randomLevel.value = decodeURIComponent(options?.rand || 'high')
   startInterview()
 })
+
+onMounted(() => {
+  document.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
+})
+
+function handleGlobalKeydown(e) {
+  if (e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault()
+    sendAnswer()
+  }
+}
 
 async function startInterview() {
   thinking.value = true
@@ -201,9 +217,17 @@ async function sendAnswer() {
       asked_questions: getAskedQuestions(),
     })
 
+    // 判断是否达到阶段末尾时，应该用"回答前"的 totalRounds，不是后端新返回的
+    const roundLimitBeforeAnswer = Number(totalRounds.value || 10)
     const answeredRound = Number(data?.answeredRound || data?.currentRound || data?.round || currentRound.value)
     const nextQuestionRound = Number(data?.nextQuestionRound || answeredRound + 1)
 
+    // 先判断是否到达阶段末尾，再更新 totalRounds
+    const reachedStageEnd = Number.isFinite(answeredRound)
+      ? answeredRound >= roundLimitBeforeAnswer
+      : false
+
+    // 更新 totalRounds（可能被后端修改）
     totalRounds.value = Number(data?.totalRounds || data?.total_rounds || totalRounds.value)
 
     const nextQuestion =
@@ -224,15 +248,30 @@ async function sendAnswer() {
       isTrue(data?.awaitChoice) ||
       isTrue(data?.await_choice) ||
       checkpointFlag ||
-      optionsFromApi.length > 0 ||
-      looksLikeDecisionPrompt(nextQuestion)
+      optionsFromApi.length > 0
 
     if (atChoiceNode) {
       isFinished.value = false
       reportLoading.value = false
       currentRound.value = Number.isFinite(answeredRound) ? Math.max(1, answeredRound) : currentRound.value
       applyMeta(data)
-      pushMessage('ai', nextQuestion, data?.routeHint, currentRound.value)
+
+      // 阶段末尾：先显示点评，再弹出选择框
+      const reviewText = data?.review || data?.comment || data?.feedback || data?.summary || ''
+      if (reviewText) {
+        pushMessage('ai', reviewText, data?.routeHint, currentRound.value)
+      }
+
+      // 如果有下一题，才显示问题（继续场景）
+      const defaultFollowup = '收到你的回答。请进一步说明你在该项目中的关键决策和结果。'
+      const hasRealQuestion = nextQuestion && nextQuestion !== defaultFollowup
+      if (hasRealQuestion) {
+        const displayedRound = Number.isFinite(nextQuestionRound)
+          ? Math.max(1, nextQuestionRound)
+          : Math.max(1, currentRound.value + 1)
+        currentRound.value = displayedRound
+        pushMessage('ai', nextQuestion, data?.routeHint, currentRound.value)
+      }
 
       awaitChoice.value = true
       decisionOptions.value = optionsFromApi.length
@@ -243,9 +282,37 @@ async function sendAnswer() {
       return
     }
 
-    currentRound.value = Number.isFinite(nextQuestionRound)
+    if (!atChoiceNode && reachedStageEnd) {
+      // 达到阶段末尾：只显示点评，不显示下一题，再弹出继续/结束选择
+      currentRound.value = Math.max(1, Number.isFinite(answeredRound) ? answeredRound : currentRound.value)
+      applyMeta(data)
+      const reviewText =
+        data?.review ||
+        data?.comment ||
+        data?.feedback ||
+        data?.summary ||
+        data?.message ||
+        '你已完成当前阶段作答。接下来你可以选择继续问答或结束面试。'
+      pushMessage('ai', reviewText, data?.routeHint, currentRound.value)
+      awaitChoice.value = true
+      decisionOptions.value = ['continue', 'end']
+      decisionDelayMs.value = Number(data?.decisionDelayMs || data?.decision_delay_ms || 0)
+      refocusInput()
+      return
+    }
+
+    // 始终显示点评（如果后端返回了的话），再显示下一题
+    const reviewText = data?.review || data?.comment || data?.feedback || data?.summary || ''
+    if (reviewText) {
+      currentRound.value = Math.max(1, Number.isFinite(answeredRound) ? answeredRound : currentRound.value)
+      applyMeta(data)
+      pushMessage('ai', reviewText, data?.routeHint, currentRound.value)
+    }
+
+    const displayedRound = Number.isFinite(nextQuestionRound)
       ? Math.max(1, nextQuestionRound)
       : Math.max(1, currentRound.value + 1)
+    currentRound.value = displayedRound
 
     applyMeta(data)
     pushMessage('ai', nextQuestion, data?.routeHint, currentRound.value)
@@ -314,7 +381,7 @@ async function submitDecision(decision, extra = {}) {
     const nextRound = Number(data?.nextQuestionRound || data?.currentRound || data?.round || currentRound.value + 1)
     currentRound.value = Number.isFinite(nextRound) ? Math.max(1, nextRound) : currentRound.value + 1
 
-    const nextQuestion = data?.nextQuestion || data?.question || data?.reply || '继续：请回答下一个问题。'
+    const nextQuestion = pickDecisionNextQuestion(data)
     pushMessage('ai', nextQuestion, data?.routeHint, currentRound.value)
 
     if (data?.awaitChoice === true) {
@@ -389,6 +456,7 @@ function getKnowledgeScope() {
 }
 
 function getAskedQuestions() {
+  // 提取所有 AI 消息作为已问过的题目
   return messages.value
     .filter((m) => m.role === 'ai' && m.content)
     .map((m) => String(m.content).trim())
@@ -436,9 +504,9 @@ function readDecisionOptions(data) {
 }
 
 function looksLikeDecisionPrompt(text) {
-  const s = String(text || '')
-  if (!s) return false
-  return /选择|继续问答|结束面试|continue|end/i.test(s)
+  // 已禁用：不再通过文本关键词自动检测决策节点
+  // 仅依赖后端的 awaitChoice、checkpoint 或 decisionOptions 标志
+  return false
 }
 
 function parseDecisionFromText(text) {
@@ -451,6 +519,17 @@ function parseDecisionFromText(text) {
     return 'end'
   }
   return ''
+}
+
+function pickDecisionNextQuestion(data) {
+  const q =
+    data?.nextQuestion ||
+    data?.next_question ||
+    ''
+  const text = String(q || '').trim()
+  if (text) return text
+  // continue 场景必须给出“题目”，不回落到点评文案
+  return '继续问答：请结合一个真实项目，说明你如何定位并解决一次复杂线上问题。'
 }
 
 async function generateReportAndJump({ showLoading = false } = {}) {
